@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { TurnkeyButton } from "@/components/ui/turnkey-button";
 
@@ -28,8 +28,14 @@ const CONTRACT_ADDRESS =
 const USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000";
 
+const EURC_ADDRESS =
+  "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
+
+const FAUCET_URL = "https://faucet.circle.com/";
+
 const ERC20_ABI = [
   "function approve(address spender,uint256 amount) external returns (bool)",
+  "function balanceOf(address account) external view returns (uint256)",
 ];
 
 const ARCSUB_ABI = [
@@ -38,6 +44,7 @@ const ARCSUB_ABI = [
   "function plans(uint256) external view returns (uint256 id,address merchant,string name,string description,uint256 price,address token,uint8 interval,uint256 trialDays,uint256 gracePeriodDays,bool active,uint256 createdAt,uint256 totalSubscribers,uint256 totalRevenue)",
   "function subscribe(uint256 planId) external",
   "function pay(uint256 planId,string couponCode) external",
+  "function cancel(uint256 planId) external",
 ];
 
 type WalletProvider = {
@@ -72,6 +79,9 @@ function getWalletProvider(): WalletProvider | undefined {
 
 export default function HomePage() {
   const [walletAddress, setWalletAddress] = useState("");
+  const [usdcBalance, setUsdcBalance] = useState("0.00");
+  const [eurcBalance, setEurcBalance] = useState("0.00");
+
   const [planCount, setPlanCount] = useState("0");
   const [plans, setPlans] = useState<Plan[]>([]);
 
@@ -97,14 +107,16 @@ export default function HomePage() {
       ? plans.reduce((sum, plan) => sum + Number(plan.price), 0) / plans.length
       : 0;
 
-  async function connectWallet() {
-    const walletProvider = getWalletProvider();
+  useEffect(() => {
+    const savedWallet = localStorage.getItem("arcsub_wallet_address");
 
-    if (!walletProvider) {
-      alert("Please install OKX Wallet or MetaMask");
-      return;
+    if (savedWallet) {
+      setWalletAddress(savedWallet);
+      loadBalances(savedWallet);
     }
+  }, []);
 
+  async function ensureArcNetwork(walletProvider: WalletProvider) {
     const ARC_CHAIN_ID = "0x4CEF52";
 
     const ARC_TESTNET = {
@@ -119,36 +131,46 @@ export default function HomePage() {
       blockExplorerUrls: ["https://testnet.arcscan.app"],
     };
 
-    try {
-      const currentChain = await walletProvider.request({
-        method: "eth_chainId",
-      });
+    const currentChain = await walletProvider.request({
+      method: "eth_chainId",
+    });
 
-      if (currentChain !== ARC_CHAIN_ID) {
-        try {
+    if (currentChain !== ARC_CHAIN_ID) {
+      try {
+        await walletProvider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: ARC_CHAIN_ID }],
+        });
+      } catch (switchError: unknown) {
+        const error = switchError as { code?: number };
+
+        if (error.code === 4902) {
+          await walletProvider.request({
+            method: "wallet_addEthereumChain",
+            params: [ARC_TESTNET],
+          });
+
           await walletProvider.request({
             method: "wallet_switchEthereumChain",
             params: [{ chainId: ARC_CHAIN_ID }],
           });
-        } catch (switchError: unknown) {
-          const error = switchError as { code?: number };
-
-          if (error.code === 4902) {
-            await walletProvider.request({
-              method: "wallet_addEthereumChain",
-              params: [ARC_TESTNET],
-            });
-
-            await walletProvider.request({
-              method: "wallet_switchEthereumChain",
-              params: [{ chainId: ARC_CHAIN_ID }],
-            });
-          } else {
-            alert("Please switch to Arc Testnet.");
-            return;
-          }
+        } else {
+          throw new Error("Please switch to Arc Testnet.");
         }
       }
+    }
+  }
+
+  async function connectWallet() {
+    const walletProvider = getWalletProvider();
+
+    if (!walletProvider) {
+      alert("Please install OKX Wallet or MetaMask");
+      return;
+    }
+
+    try {
+      await ensureArcNetwork(walletProvider);
 
       const accounts = await walletProvider.request({
         method: "eth_requestAccounts",
@@ -160,11 +182,27 @@ export default function HomePage() {
 
       if (address) {
         setWalletAddress(address);
+        localStorage.setItem("arcsub_wallet_address", address);
+        await loadBalances(address);
       }
     } catch (err) {
       console.error(err);
       alert("Wallet connection failed.");
     }
+  }
+
+  function disconnectWallet() {
+    setWalletAddress("");
+    setUsdcBalance("0.00");
+    setEurcBalance("0.00");
+    localStorage.removeItem("arcsub_wallet_address");
+  }
+
+  async function copyWalletAddress() {
+    if (!walletAddress) return;
+
+    await navigator.clipboard.writeText(walletAddress);
+    alert("Wallet address copied");
   }
 
   async function getContract(withSigner = false) {
@@ -173,6 +211,8 @@ export default function HomePage() {
     if (!walletProvider) {
       throw new Error("Wallet not found");
     }
+
+    await ensureArcNetwork(walletProvider);
 
     const provider = new ethers.BrowserProvider(walletProvider);
 
@@ -191,6 +231,40 @@ export default function HomePage() {
       ARCSUB_ABI,
       provider
     );
+  }
+
+  async function loadBalances(address = walletAddress) {
+    const walletProvider = getWalletProvider();
+
+    if (!walletProvider || !address) return;
+
+    try {
+      await ensureArcNetwork(walletProvider);
+
+      const provider = new ethers.BrowserProvider(walletProvider);
+
+      const usdc = new ethers.Contract(
+        USDC_ADDRESS,
+        ERC20_ABI,
+        provider
+      );
+
+      const eurc = new ethers.Contract(
+        EURC_ADDRESS,
+        ERC20_ABI,
+        provider
+      );
+
+      const [usdcRaw, eurcRaw] = await Promise.all([
+        usdc.balanceOf(address),
+        eurc.balanceOf(address),
+      ]);
+
+      setUsdcBalance(Number(ethers.formatUnits(usdcRaw, 6)).toFixed(2));
+      setEurcBalance(Number(ethers.formatUnits(eurcRaw, 6)).toFixed(2));
+    } catch (err) {
+      console.error("Failed to load balances:", err);
+    }
   }
 
   async function loadPlans() {
@@ -256,14 +330,15 @@ export default function HomePage() {
       setPlanPrice("");
       setPlanInterval("1");
 
-      loadPlans();
+      await loadPlans();
+      await loadBalances();
     } catch (err) {
       console.error(err);
       alert("Create plan failed");
     }
   }
 
-  async function approveUSDC() {
+  async function approveUSDC(amount: string) {
     try {
       const walletProvider = getWalletProvider();
 
@@ -271,6 +346,8 @@ export default function HomePage() {
         alert("Please connect OKX Wallet or MetaMask first");
         return;
       }
+
+      await ensureArcNetwork(walletProvider);
 
       const provider = new ethers.BrowserProvider(walletProvider);
       const signer = await provider.getSigner();
@@ -283,7 +360,7 @@ export default function HomePage() {
 
       const tx = await usdc.approve(
         CONTRACT_ADDRESS,
-        ethers.MaxUint256
+        ethers.parseUnits(amount, 6)
       );
 
       alert("Approve transaction submitted");
@@ -294,25 +371,35 @@ export default function HomePage() {
     } catch (err) {
       console.error(err);
       alert("Approve USDC failed");
+      throw err;
     }
   }
 
-  async function subscribe(planId: string) {
+  async function subscribeAndPay(plan: Plan) {
     try {
       const contract = await getContract(true);
 
-      const tx = await contract.subscribe(planId);
+      await approveUSDC(plan.price);
+
+      const subscribeTx = await contract.subscribe(plan.id);
 
       alert("Subscribe transaction submitted");
 
-      await tx.wait();
+      await subscribeTx.wait();
 
-      alert("Subscribed successfully");
+      const payTx = await contract.pay(plan.id, "");
 
-      loadPlans();
+      alert("Payment transaction submitted");
+
+      await payTx.wait();
+
+      alert("Subscribed and paid successfully");
+
+      await loadPlans();
+      await loadBalances();
     } catch (err) {
       console.error(err);
-      alert("Subscribe failed");
+      alert("Subscribe and Pay failed");
     }
   }
 
@@ -320,37 +407,102 @@ export default function HomePage() {
     try {
       const contract = await getContract(true);
 
-      const tx = await contract.pay(planId, "");
+      const payTx = await contract.pay(planId, "");
 
       alert("Payment transaction submitted");
 
-      await tx.wait();
+      await payTx.wait();
 
       alert("Payment successful");
 
-      loadPlans();
+      await loadPlans();
+      await loadBalances();
     } catch (err) {
       console.error(err);
       alert("Payment failed");
     }
   }
 
+  async function cancelSubscription(planId: string) {
+    try {
+      const contract = await getContract(true);
+
+      const tx = await contract.cancel(planId);
+
+      alert("Cancel subscription transaction submitted");
+
+      await tx.wait();
+
+      alert("Subscription cancelled");
+
+      await loadPlans();
+    } catch (err) {
+      console.error(err);
+      alert("Cancel subscription failed");
+    }
+  }
+
+  function openFaucet() {
+    window.open(FAUCET_URL, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="border-b border-white/10">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <h1 className="text-2xl font-bold">
             ArcSub V3
           </h1>
 
-          <button
-            onClick={connectWallet}
-            className="rounded-xl bg-white px-4 py-2 text-black transition hover:opacity-80"
-          >
-            {walletAddress
-              ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-              : "Connect Wallet"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={openFaucet}
+              className="rounded-xl border border-blue-400/30 px-4 py-2 text-sm text-blue-400 transition hover:bg-blue-400/10"
+            >
+              Get testnet token
+            </button>
+
+            {walletAddress ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div>
+                  <p className="text-sm text-zinc-400">
+                    Connected Wallet
+                  </p>
+
+                  <p className="font-medium">
+                    {walletAddress.slice(0, 6)}...
+                    {walletAddress.slice(-4)}
+                  </p>
+                </div>
+
+                <div className="text-sm text-zinc-300">
+                  <p>USDC: {usdcBalance}</p>
+                  <p>EURC: {eurcBalance}</p>
+                </div>
+
+                <button
+                  onClick={copyWalletAddress}
+                  className="rounded-xl border border-white/20 px-3 py-2 text-sm transition hover:bg-white/10"
+                >
+                  Copy
+                </button>
+
+                <button
+                  onClick={disconnectWallet}
+                  className="rounded-xl border border-red-400/30 px-3 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={connectWallet}
+                className="rounded-xl bg-white px-4 py-2 text-black transition hover:opacity-80"
+              >
+                Connect Wallet
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -384,10 +536,10 @@ export default function HomePage() {
             <TurnkeyButton />
 
             <button
-              onClick={approveUSDC}
-              className="rounded-2xl border border-green-400/30 px-6 py-3 text-green-400 transition hover:bg-green-400/10"
+              onClick={() => loadBalances()}
+              className="rounded-2xl border border-white/20 px-6 py-3 transition hover:bg-white/10"
             >
-              Approve USDC
+              Refresh Balances
             </button>
 
             <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
@@ -551,17 +703,24 @@ export default function HomePage() {
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
-                  onClick={() => subscribe(plan.id)}
+                  onClick={() => subscribeAndPay(plan)}
                   className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
                 >
-                  Subscribe
+                  Subscribe + Pay
                 </button>
 
                 <button
                   onClick={() => pay(plan.id)}
                   className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
                 >
-                  Pay
+                  Pay Renewal
+                </button>
+
+                <button
+                  onClick={() => cancelSubscription(plan.id)}
+                  className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+                >
+                  Cancel
                 </button>
               </div>
             </div>
