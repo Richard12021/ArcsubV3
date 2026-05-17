@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -41,6 +40,13 @@ const ARCSUB_ABI = [
   "function pay(uint256 planId,string couponCode) external",
 ];
 
+type WalletProvider = {
+  request: (args: {
+    method: string;
+    params?: unknown[];
+  }) => Promise<unknown>;
+};
+
 type Plan = {
   id: string;
   merchant: string;
@@ -59,6 +65,10 @@ const intervalLabels: Record<string, string> = {
   "1": "Monthly",
   "2": "Yearly",
 };
+
+function getWalletProvider(): WalletProvider | undefined {
+  return window.okxwallet || window.ethereum;
+}
 
 export default function HomePage() {
   const [walletAddress, setWalletAddress] = useState("");
@@ -88,14 +98,12 @@ export default function HomePage() {
       : 0;
 
   async function connectWallet() {
-    const walletProvider =
-  window.okxwallet ||
-  window.ethereum;
+    const walletProvider = getWalletProvider();
 
-if (!walletProvider) {
-  alert("Please install MetaMask or OKX Wallet");
-  return;
-}
+    if (!walletProvider) {
+      alert("Please install OKX Wallet or MetaMask");
+      return;
+    }
 
     const ARC_CHAIN_ID = "0x4CEF52";
 
@@ -160,11 +168,13 @@ if (!walletProvider) {
   }
 
   async function getContract(withSigner = false) {
-    if (!window.ethereum) {
+    const walletProvider = getWalletProvider();
+
+    if (!walletProvider) {
       throw new Error("Wallet not found");
     }
 
-    const provider = new ethers.BrowserProvider(window.ethereum);
+    const provider = new ethers.BrowserProvider(walletProvider);
 
     if (withSigner) {
       const signer = await provider.getSigner();
@@ -254,10 +264,15 @@ if (!walletProvider) {
   }
 
   async function approveUSDC() {
-    if (!window.ethereum) return;
-
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const walletProvider = getWalletProvider();
+
+      if (!walletProvider) {
+        alert("Please connect OKX Wallet or MetaMask first");
+        return;
+      }
+
+      const provider = new ethers.BrowserProvider(walletProvider);
       const signer = await provider.getSigner();
 
       const usdc = new ethers.Contract(
@@ -359,26 +374,26 @@ if (!walletProvider) {
           </p>
 
           <div className="mt-10 flex flex-wrap gap-4">
-  <button
-    onClick={loadPlans}
-    className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
-  >
-    Load Plans
-  </button>
+            <button
+              onClick={loadPlans}
+              className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
+            >
+              Load Plans
+            </button>
 
-  <TurnkeyButton />
+            <TurnkeyButton />
 
-  <button
-    onClick={approveUSDC}
-    className="rounded-2xl border border-green-400/30 px-6 py-3 text-green-400 transition hover:bg-green-400/10"
-  >
-    Approve USDC
-  </button>
+            <button
+              onClick={approveUSDC}
+              className="rounded-2xl border border-green-400/30 px-6 py-3 text-green-400 transition hover:bg-green-400/10"
+            >
+              Approve USDC
+            </button>
 
-  <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
-    Total Plans: {planCount}
-  </div>
-</div>
+            <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
+              Total Plans: {planCount}
+            </div>
+          </div>
         </div>
 
         <div className="mt-16 grid gap-6 md:grid-cols-4">
