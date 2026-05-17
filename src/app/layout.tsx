@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TurnkeyProviderWrapper } from "./turnkey-provider";
+import "@turnkey/react-wallet-kit/styles.css";
 
 import "./globals.css";
 

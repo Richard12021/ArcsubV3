@@ -2,9 +2,7 @@
 
 export function TurnkeyButton() {
   async function handleTurnkeyLogin() {
-    alert(
-      "Turnkey embedded wallet integration coming next."
-    );
+    alert("Turnkey auth is prepared. Provider setup is the next step.");
   }
 
   return (
