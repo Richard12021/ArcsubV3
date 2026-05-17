@@ -13,6 +13,13 @@ declare global {
         params?: unknown[];
       }) => Promise<unknown>;
     };
+
+    okxwallet?: {
+      request: (args: {
+        method: string;
+        params?: unknown[];
+      }) => Promise<unknown>;
+    };
   }
 }
 
@@ -81,10 +88,14 @@ export default function HomePage() {
       : 0;
 
   async function connectWallet() {
-    if (!window.ethereum) {
-      alert("Please install MetaMask or OKX Wallet");
-      return;
-    }
+    const walletProvider =
+  window.okxwallet ||
+  window.ethereum;
+
+if (!walletProvider) {
+  alert("Please install MetaMask or OKX Wallet");
+  return;
+}
 
     const ARC_CHAIN_ID = "0x4CEF52";
 
@@ -101,13 +112,13 @@ export default function HomePage() {
     };
 
     try {
-      const currentChain = await window.ethereum.request({
+      const currentChain = await walletProvider.request({
         method: "eth_chainId",
       });
 
       if (currentChain !== ARC_CHAIN_ID) {
         try {
-          await window.ethereum.request({
+          await walletProvider.request({
             method: "wallet_switchEthereumChain",
             params: [{ chainId: ARC_CHAIN_ID }],
           });
@@ -115,12 +126,12 @@ export default function HomePage() {
           const error = switchError as { code?: number };
 
           if (error.code === 4902) {
-            await window.ethereum.request({
+            await walletProvider.request({
               method: "wallet_addEthereumChain",
               params: [ARC_TESTNET],
             });
 
-            await window.ethereum.request({
+            await walletProvider.request({
               method: "wallet_switchEthereumChain",
               params: [{ chainId: ARC_CHAIN_ID }],
             });
@@ -131,7 +142,7 @@ export default function HomePage() {
         }
       }
 
-      const accounts = await window.ethereum.request({
+      const accounts = await walletProvider.request({
         method: "eth_requestAccounts",
       });
 
