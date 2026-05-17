@@ -84,28 +84,34 @@ export default function HomePage() {
 
   const [planCount, setPlanCount] = useState("0");
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [subscribedPlans, setSubscribedPlans] = useState<string[]>([]);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
 
   const [planName, setPlanName] = useState("");
   const [planDescription, setPlanDescription] = useState("");
   const [planPrice, setPlanPrice] = useState("");
   const [planInterval, setPlanInterval] = useState("1");
 
-  const totalRevenue = plans.reduce(
-    (sum, plan) => sum + Number(plan.revenue),
-    0
-  );
+  const activeSubscribedPlans = plans.filter((plan) =>
+  subscribedPlans.includes(plan.id)
+);
 
-  const totalSubscribers = plans.reduce(
-    (sum, plan) => sum + Number(plan.subscribers),
-    0
-  );
+const totalRevenue = activeSubscribedPlans.reduce(
+  (sum, plan) => sum + Number(plan.price),
+  0
+);
 
-  const activePlans = plans.filter((plan) => plan.active).length;
+const totalSubscribers = activeSubscribedPlans.length;
 
-  const averagePlanPrice =
-    plans.length > 0
-      ? plans.reduce((sum, plan) => sum + Number(plan.price), 0) / plans.length
-      : 0;
+const activePlans = activeSubscribedPlans.length;
+
+const averagePlanPrice =
+  activeSubscribedPlans.length > 0
+    ? activeSubscribedPlans.reduce(
+        (sum, plan) => sum + Number(plan.price),
+        0
+      ) / activeSubscribedPlans.length
+    : 0;
 
   useEffect(() => {
     const savedWallet = localStorage.getItem("arcsub_wallet_address");
@@ -395,6 +401,8 @@ export default function HomePage() {
 
       alert("Subscribed and paid successfully");
 
+      setSubscribedPlans((prev) => [...new Set([...prev, plan.id])]);
+
       await loadPlans();
       await loadBalances();
     } catch (err) {
@@ -435,6 +443,10 @@ export default function HomePage() {
 
       alert("Subscription cancelled");
 
+      setSubscribedPlans((prev) =>
+      prev.filter((id) => id !== planId)
+      );
+
       await loadPlans();
     } catch (err) {
       console.error(err);
@@ -463,37 +475,62 @@ export default function HomePage() {
             </button>
 
             {walletAddress ? (
-              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div>
-                  <p className="text-sm text-zinc-400">
-                    Connected Wallet
-                  </p>
+              <div className="relative">
+  <button
+    onClick={() => setWalletMenuOpen(!walletMenuOpen)}
+    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 transition hover:bg-white/10"
+  >
+    <span>
+      {walletAddress.slice(0, 6)}...
+      {walletAddress.slice(-4)}
+    </span>
 
-                  <p className="font-medium">
-                    {walletAddress.slice(0, 6)}...
-                    {walletAddress.slice(-4)}
-                  </p>
-                </div>
+    <span className="text-xs text-zinc-400">
+      ▼
+    </span>
+  </button>
 
-                <div className="text-sm text-zinc-300">
-                  <p>USDC: {usdcBalance}</p>
-                  <p>EURC: {eurcBalance}</p>
-                </div>
+  {walletMenuOpen && (
+    <div className="absolute right-0 top-14 z-50 w-72 rounded-2xl border border-white/10 bg-black p-4 shadow-2xl">
+      <p className="text-sm text-zinc-400">
+        Wallet Balances
+      </p>
 
-                <button
-                  onClick={copyWalletAddress}
-                  className="rounded-xl border border-white/20 px-3 py-2 text-sm transition hover:bg-white/10"
-                >
-                  Copy
-                </button>
+      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+        <p>USDC: {usdcBalance}</p>
+        <p className="mt-1">EURC: {eurcBalance}</p>
+      </div>
 
-                <button
-                  onClick={disconnectWallet}
-                  className="rounded-xl border border-red-400/30 px-3 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
-                >
-                  Disconnect
-                </button>
-              </div>
+      <div className="mt-4 flex flex-col gap-2">
+        <button
+          onClick={copyWalletAddress}
+          className="rounded-xl border border-white/10 px-4 py-2 text-left transition hover:bg-white/10"
+        >
+          Copy Address
+        </button>
+
+        <button
+          onClick={() =>
+            window.open(
+              `https://testnet.arcscan.app/address/${walletAddress}`,
+              "_blank"
+            )
+          }
+          className="rounded-xl border border-white/10 px-4 py-2 text-left transition hover:bg-white/10"
+        >
+          View on Arcscan
+        </button>
+
+        <button
+          onClick={disconnectWallet}
+          className="rounded-xl border border-red-400/30 px-4 py-2 text-left text-red-400 transition hover:bg-red-400/10"
+        >
+          Disconnect
+        </button>
+      </div>
+    </div>
+  )}
+</div>
             ) : (
               <button
                 onClick={connectWallet}
@@ -534,13 +571,6 @@ export default function HomePage() {
             </button>
 
             <TurnkeyButton />
-
-            <button
-              onClick={() => loadBalances()}
-              className="rounded-2xl border border-white/20 px-6 py-3 transition hover:bg-white/10"
-            >
-              Refresh Balances
-            </button>
 
             <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
               Total Plans: {planCount}
@@ -701,28 +731,32 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  onClick={() => subscribeAndPay(plan)}
-                  className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
-                >
-                  Subscribe + Pay
-                </button>
+             <div className="mt-6 flex flex-wrap gap-3">
+  {!subscribedPlans.includes(plan.id) ? (
+    <button
+      onClick={() => subscribeAndPay(plan)}
+      className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
+    >
+      Subscribe + Pay
+    </button>
+  ) : (
+    <>
+      <button
+        onClick={() => pay(plan.id)}
+        className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
+      >
+        Pay Renewal
+      </button>
 
-                <button
-                  onClick={() => pay(plan.id)}
-                  className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
-                >
-                  Pay Renewal
-                </button>
-
-                <button
-                  onClick={() => cancelSubscription(plan.id)}
-                  className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
-                >
-                  Cancel
-                </button>
-              </div>
+      <button
+        onClick={() => cancelSubscription(plan.id)}
+        className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+      >
+        Cancel
+      </button>
+    </>
+  )}
+</div>
             </div>
           ))}
         </div>
