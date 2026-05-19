@@ -23,7 +23,7 @@ declare global {
 }
 
 const CONTRACT_ADDRESS =
-  "0xab5BD669D057042eeA9460D3cC5f15c275f3fBF4";
+  "0x65F8ca69218f95A6cc16F6c079e58892058e1214";
 
 const USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000";
@@ -45,6 +45,8 @@ const ARCSUB_ABI = [
   "function subscribe(uint256 planId) external",
   "function pay(uint256 planId,string couponCode) external",
   "function cancel(uint256 planId) external",
+  "function isSubscribed(address user,uint256 planId) external view returns (bool)",
+  "function getSubscription(address user,uint256 planId) external view returns (uint256 id,address subscriber,uint256 startedAt,uint256 lastPaidAt,uint256 nextPaymentAt,bool active,bool cancelled)",
 ];
 
 type WalletProvider = {
@@ -92,24 +94,33 @@ export default function HomePage() {
   const [planPrice, setPlanPrice] = useState("");
   const [planInterval, setPlanInterval] = useState("1");
 
-  const activeSubscribedPlans = plans.filter((plan) =>
-    subscribedPlans.includes(plan.id)
-  );
+  const merchantPlans = walletAddress
+    ? plans.filter(
+        (plan) =>
+          plan.merchant.toLowerCase() === walletAddress.toLowerCase()
+      )
+    : [];
 
-  const totalRevenue = activeSubscribedPlans.reduce(
-    (sum, plan) => sum + Number(plan.price),
+  const merchantRevenue = merchantPlans.reduce(
+    (sum, plan) => sum + Number(plan.revenue),
     0
   );
 
-  const totalSubscribers = activeSubscribedPlans.length;
-  const activePlans = activeSubscribedPlans.length;
+  const merchantSubscribers = merchantPlans.reduce(
+    (sum, plan) => sum + Number(plan.subscribers),
+    0
+  );
 
-  const averagePlanPrice =
-    activeSubscribedPlans.length > 0
-      ? activeSubscribedPlans.reduce(
+  const merchantActivePlans = merchantPlans.filter(
+    (plan) => plan.active
+  ).length;
+
+  const merchantAveragePlanPrice =
+    merchantPlans.length > 0
+      ? merchantPlans.reduce(
           (sum, plan) => sum + Number(plan.price),
           0
-        ) / activeSubscribedPlans.length
+        ) / merchantPlans.length
       : 0;
 
   useEffect(() => {
@@ -118,6 +129,7 @@ export default function HomePage() {
     if (savedWallet) {
       setWalletAddress(savedWallet);
       loadBalances(savedWallet);
+      loadPlans(savedWallet);
     }
   }, []);
 
@@ -189,6 +201,7 @@ export default function HomePage() {
         setWalletAddress(address);
         localStorage.setItem("arcsub_wallet_address", address);
         await loadBalances(address);
+        await loadPlans(address);
       }
     } catch (err) {
       console.error(err);
@@ -201,6 +214,7 @@ export default function HomePage() {
     setUsdcBalance("0.00");
     setEurcBalance("0.00");
     setWalletMenuOpen(false);
+    setSubscribedPlans([]);
     localStorage.removeItem("arcsub_wallet_address");
   }
 
@@ -273,7 +287,7 @@ export default function HomePage() {
     }
   }
 
-  async function loadPlans() {
+  async function loadPlans(address = walletAddress) {
     try {
       const contract = await getContract(false);
       const totalPlans = await contract.planCount();
@@ -299,6 +313,26 @@ export default function HomePage() {
         });
       }
 
+      const subscribed: string[] = [];
+
+      if (address) {
+        for (const plan of loadedPlans) {
+          try {
+            const subscribedStatus = await contract.isSubscribed(
+              address,
+              plan.id
+            );
+
+            if (subscribedStatus) {
+              subscribed.push(plan.id);
+            }
+          } catch (err) {
+            console.error("Failed to check subscription:", err);
+          }
+        }
+      }
+
+      setSubscribedPlans(subscribed);
       setPlans(loadedPlans);
     } catch (err) {
       console.error(err);
@@ -336,7 +370,7 @@ export default function HomePage() {
       setPlanPrice("");
       setPlanInterval("1");
 
-      await loadPlans();
+      await loadPlans(walletAddress);
       await loadBalances();
     } catch (err) {
       console.error(err);
@@ -401,9 +435,7 @@ export default function HomePage() {
 
       alert("Subscribed and paid successfully");
 
-      setSubscribedPlans((prev) => [...new Set([...prev, plan.id])]);
-
-      await loadPlans();
+      await loadPlans(walletAddress);
       await loadBalances();
     } catch (err) {
       console.error(err);
@@ -423,7 +455,7 @@ export default function HomePage() {
 
       alert("Payment successful");
 
-      await loadPlans();
+      await loadPlans(walletAddress);
       await loadBalances();
     } catch (err) {
       console.error(err);
@@ -443,11 +475,8 @@ export default function HomePage() {
 
       alert("Subscription cancelled");
 
-      setSubscribedPlans((prev) =>
-        prev.filter((id) => id !== planId)
-      );
-
-      await loadPlans();
+      await loadPlans(walletAddress);
+      await loadBalances();
     } catch (err) {
       console.error(err);
       alert("Cancel subscription failed");
@@ -463,7 +492,7 @@ export default function HomePage() {
       <div className="border-b border-white/10">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <h1 className="text-2xl font-bold">
-            ArcSub V3
+            ArcSub V4
           </h1>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -548,25 +577,22 @@ export default function HomePage() {
       <section className="mx-auto max-w-7xl px-6 py-20">
         <div className="max-w-3xl">
           <p className="mb-4 text-sm uppercase tracking-[0.3em] text-zinc-400">
-            Enterprise Stablecoin Subscriptions
+            Merchant Subscription Dashboard
           </p>
 
           <h2 className="text-6xl font-bold leading-tight">
-            Recurring USDC Payments
-            for the Arc Ecosystem
+            Manage Stablecoin Subscriptions
+            on Arc
           </h2>
 
           <p className="mt-6 text-xl text-zinc-400">
-            ArcSub V3 enables modern subscription
-            infrastructure powered by USDC,
-            account abstraction,
-            embedded wallets,
-            and automated recurring payments.
+            Create plans, track subscribers, monitor merchant revenue,
+            and manage recurring USDC payments from one dashboard.
           </p>
 
           <div className="mt-10 flex flex-wrap gap-4">
             <button
-              onClick={loadPlans}
+              onClick={() => loadPlans(walletAddress)}
               className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
             >
               Load Plans
@@ -575,36 +601,54 @@ export default function HomePage() {
             <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
               Total Plans: {planCount}
             </div>
+
+            <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
+              My Plans: {merchantPlans.length}
+            </div>
           </div>
         </div>
 
-        <div className="mt-16 grid gap-6 md:grid-cols-4">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">Total Revenue</p>
-            <h3 className="mt-3 text-3xl font-bold">
-              {totalRevenue.toFixed(2)} USDC
-            </h3>
-          </div>
+        <div className="mt-16">
+          <h3 className="mb-6 text-2xl font-semibold">
+            Merchant Dashboard
+          </h3>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">Total Subscribers</p>
-            <h3 className="mt-3 text-3xl font-bold">
-              {totalSubscribers}
-            </h3>
-          </div>
+          <div className="grid gap-6 md:grid-cols-4">
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              <p className="text-sm text-zinc-400">
+                Merchant Revenue
+              </p>
+              <h3 className="mt-3 text-3xl font-bold">
+                {merchantRevenue.toFixed(2)} USDC
+              </h3>
+            </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">Active Plans</p>
-            <h3 className="mt-3 text-3xl font-bold">
-              {activePlans}
-            </h3>
-          </div>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              <p className="text-sm text-zinc-400">
+                Merchant Subscribers
+              </p>
+              <h3 className="mt-3 text-3xl font-bold">
+                {merchantSubscribers}
+              </h3>
+            </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">Avg Plan Price</p>
-            <h3 className="mt-3 text-3xl font-bold">
-              {averagePlanPrice.toFixed(2)} USDC
-            </h3>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              <p className="text-sm text-zinc-400">
+                Merchant Active Plans
+              </p>
+              <h3 className="mt-3 text-3xl font-bold">
+                {merchantActivePlans}
+              </h3>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              <p className="text-sm text-zinc-400">
+                Avg Plan Price
+              </p>
+              <h3 className="mt-3 text-3xl font-bold">
+                {merchantAveragePlanPrice.toFixed(2)} USDC
+              </h3>
+            </div>
           </div>
         </div>
 
@@ -658,95 +702,106 @@ export default function HomePage() {
           </button>
         </div>
 
-        <div className="mt-20 grid gap-6 md:grid-cols-3">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <span className="text-sm text-zinc-400">
-                  Plan #{plan.id}
-                </span>
+        <div className="mt-20">
+          <h3 className="mb-6 text-2xl font-semibold">
+            Marketplace Plans
+          </h3>
 
-                <span
-                  className={`rounded-full px-3 py-1 text-xs ${
-                    plan.active
-                      ? "bg-green-500/10 text-green-400"
-                      : "bg-red-500/10 text-red-400"
-                  }`}
-                >
-                  {plan.active ? "Active" : "Inactive"}
-                </span>
-              </div>
-
-              <h3 className="text-xl font-semibold">
-                {plan.name}
-              </h3>
-
-              <p className="mt-2 text-zinc-400">
-                {plan.description}
-              </p>
-
-              <div className="mt-6 space-y-2 text-sm text-zinc-300">
-                <p>
-                  Price:{" "}
-                  <span className="text-white">
-                    {plan.price} USDC /{" "}
-                    {intervalLabels[plan.interval] ?? "Cycle"}
+          <div className="grid gap-6 md:grid-cols-3">
+            {plans.map((plan) => (
+              <div
+                key={plan.id}
+                className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">
+                    Plan #{plan.id}
                   </span>
-                </p>
 
-                <p>
-                  Subscribers:{" "}
-                  <span className="text-white">
-                    {plan.subscribers}
-                  </span>
-                </p>
-
-                <p>
-                  Revenue:{" "}
-                  <span className="text-white">
-                    {plan.revenue} USDC
-                  </span>
-                </p>
-
-                <p className="truncate">
-                  Merchant:{" "}
-                  <span className="text-white">
-                    {plan.merchant}
-                  </span>
-                </p>
-              </div>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                {!subscribedPlans.includes(plan.id) ? (
-                  <button
-                    onClick={() => subscribeAndPay(plan)}
-                    className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      plan.active
+                        ? "bg-green-500/10 text-green-400"
+                        : "bg-red-500/10 text-red-400"
+                    }`}
                   >
-                    Subscribe + Pay
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => pay(plan.id)}
-                      className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
-                    >
-                      Pay Renewal
-                    </button>
+                    {plan.active ? "Active" : "Inactive"}
+                  </span>
+                </div>
 
+                <h3 className="text-xl font-semibold">
+                  {plan.name}
+                </h3>
+
+                <p className="mt-2 text-zinc-400">
+                  {plan.description}
+                </p>
+
+                <div className="mt-6 space-y-2 text-sm text-zinc-300">
+                  <p>
+                    Price:{" "}
+                    <span className="text-white">
+                      {plan.price} USDC /{" "}
+                      {intervalLabels[plan.interval] ?? "Cycle"}
+                    </span>
+                  </p>
+
+                  <p>
+                    Subscribers:{" "}
+                    <span className="text-white">
+                      {plan.subscribers}
+                    </span>
+                  </p>
+
+                  <p>
+                    Revenue:{" "}
+                    <span className="text-white">
+                      {plan.revenue} USDC
+                    </span>
+                  </p>
+
+                  <p className="truncate">
+                    Merchant:{" "}
+                    <span className="text-white">
+                      {plan.merchant}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  {walletAddress.toLowerCase() ===
+                  plan.merchant.toLowerCase() ? (
+                    <span className="rounded-xl border border-yellow-400/30 px-4 py-2 text-sm text-yellow-400">
+                      Your Plan
+                    </span>
+                  ) : !subscribedPlans.includes(plan.id) ? (
                     <button
-                      onClick={() => cancelSubscription(plan.id)}
-                      className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+                      onClick={() => subscribeAndPay(plan)}
+                      className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
                     >
-                      Cancel
+                      Subscribe + Pay
                     </button>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => pay(plan.id)}
+                        className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
+                      >
+                        Pay Renewal
+                      </button>
+
+                      <button
+                        onClick={() => cancelSubscription(plan.id)}
+                        className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
     </main>

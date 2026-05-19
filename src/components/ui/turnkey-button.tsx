@@ -1,5 +1,6 @@
 "use client";
 
+import { Copy } from "lucide-react";
 import { useTurnkey } from "@turnkey/react-wallet-kit";
 
 export function TurnkeyButton() {
@@ -13,12 +14,10 @@ export function TurnkeyButton() {
 
   async function handleCreateWallet() {
     try {
-      const walletId = await createWallet({
+      await createWallet({
         walletName: "ArcSub Embedded Wallet",
         accounts: ["ADDRESS_FORMAT_ETHEREUM"],
       });
-
-      console.log("Turnkey wallet created:", walletId);
 
       await refreshWallets();
       alert("Turnkey wallet created successfully");
@@ -45,15 +44,27 @@ export function TurnkeyButton() {
     wallet.accounts?.[0]?.address || "Wallet created";
 
   return (
-    <button
-      onClick={() => navigator.clipboard.writeText(address)}
-      className="rounded-2xl bg-green-500 px-6 py-3 font-medium text-white transition hover:bg-green-400"
-    >
-      Turnkey:{" "}
-      {address.startsWith("0x")
-        ? `${address.slice(0, 6)}...${address.slice(-4)}`
-        : address}
-    </button>
+    <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 px-4 py-3 text-green-400">
+      <span className="font-medium">
+        Turnkey:{" "}
+        {address.startsWith("0x")
+          ? `${address.slice(0, 6)}...${address.slice(-4)}`
+          : address}
+      </span>
+
+      {address.startsWith("0x") && (
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(address);
+            alert("Turnkey wallet copied");
+          }}
+          className="rounded-lg border border-green-400/30 p-2 transition hover:bg-green-400/10"
+          title="Copy Turnkey wallet"
+        >
+          <Copy size={16} />
+        </button>
+      )}
+    </div>
   );
 }
 
