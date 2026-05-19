@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { TurnkeyProviderWrapper } from "./turnkey-provider";
-import "@turnkey/react-wallet-kit/styles.css";
 
+import "@turnkey/react-wallet-kit/styles.css";
 import "./globals.css";
 
 import { Providers } from "./providers";
@@ -33,11 +32,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-black text-white">
-        <TurnkeyProviderWrapper>
-  <Providers>
-    {children}
-  </Providers>
-</TurnkeyProviderWrapper>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

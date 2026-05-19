@@ -93,25 +93,24 @@ export default function HomePage() {
   const [planInterval, setPlanInterval] = useState("1");
 
   const activeSubscribedPlans = plans.filter((plan) =>
-  subscribedPlans.includes(plan.id)
-);
+    subscribedPlans.includes(plan.id)
+  );
 
-const totalRevenue = activeSubscribedPlans.reduce(
-  (sum, plan) => sum + Number(plan.price),
-  0
-);
+  const totalRevenue = activeSubscribedPlans.reduce(
+    (sum, plan) => sum + Number(plan.price),
+    0
+  );
 
-const totalSubscribers = activeSubscribedPlans.length;
+  const totalSubscribers = activeSubscribedPlans.length;
+  const activePlans = activeSubscribedPlans.length;
 
-const activePlans = activeSubscribedPlans.length;
-
-const averagePlanPrice =
-  activeSubscribedPlans.length > 0
-    ? activeSubscribedPlans.reduce(
-        (sum, plan) => sum + Number(plan.price),
-        0
-      ) / activeSubscribedPlans.length
-    : 0;
+  const averagePlanPrice =
+    activeSubscribedPlans.length > 0
+      ? activeSubscribedPlans.reduce(
+          (sum, plan) => sum + Number(plan.price),
+          0
+        ) / activeSubscribedPlans.length
+      : 0;
 
   useEffect(() => {
     const savedWallet = localStorage.getItem("arcsub_wallet_address");
@@ -201,6 +200,7 @@ const averagePlanPrice =
     setWalletAddress("");
     setUsdcBalance("0.00");
     setEurcBalance("0.00");
+    setWalletMenuOpen(false);
     localStorage.removeItem("arcsub_wallet_address");
   }
 
@@ -444,7 +444,7 @@ const averagePlanPrice =
       alert("Subscription cancelled");
 
       setSubscribedPlans((prev) =>
-      prev.filter((id) => id !== planId)
+        prev.filter((id) => id !== planId)
       );
 
       await loadPlans();
@@ -467,6 +467,8 @@ const averagePlanPrice =
           </h1>
 
           <div className="flex flex-wrap items-center gap-3">
+            <TurnkeyButton />
+
             <button
               onClick={openFaucet}
               className="rounded-xl border border-blue-400/30 px-4 py-2 text-sm text-blue-400 transition hover:bg-blue-400/10"
@@ -476,67 +478,67 @@ const averagePlanPrice =
 
             {walletAddress ? (
               <div className="relative">
-  <button
-    onClick={() => setWalletMenuOpen(!walletMenuOpen)}
-    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 transition hover:bg-white/10"
-  >
-    <span>
-      {walletAddress.slice(0, 6)}...
-      {walletAddress.slice(-4)}
-    </span>
+                <button
+                  onClick={() => setWalletMenuOpen(!walletMenuOpen)}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 transition hover:bg-white/10"
+                >
+                  <span>
+                    {walletAddress.slice(0, 6)}...
+                    {walletAddress.slice(-4)}
+                  </span>
 
-    <span className="text-xs text-zinc-400">
-      ▼
-    </span>
-  </button>
+                  <span className="text-xs text-zinc-400">
+                    ▼
+                  </span>
+                </button>
 
-  {walletMenuOpen && (
-    <div className="absolute right-0 top-14 z-50 w-72 rounded-2xl border border-white/10 bg-black p-4 shadow-2xl">
-      <p className="text-sm text-zinc-400">
-        Wallet Balances
-      </p>
+                {walletMenuOpen && (
+                  <div className="absolute right-0 top-14 z-50 w-72 rounded-2xl border border-white/10 bg-black p-4 shadow-2xl">
+                    <p className="text-sm text-zinc-400">
+                      Extension Wallet
+                    </p>
 
-      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
-        <p>USDC: {usdcBalance}</p>
-        <p className="mt-1">EURC: {eurcBalance}</p>
-      </div>
+                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+                      <p>USDC: {usdcBalance}</p>
+                      <p className="mt-1">EURC: {eurcBalance}</p>
+                    </div>
 
-      <div className="mt-4 flex flex-col gap-2">
-        <button
-          onClick={copyWalletAddress}
-          className="rounded-xl border border-white/10 px-4 py-2 text-left transition hover:bg-white/10"
-        >
-          Copy Address
-        </button>
+                    <div className="mt-4 flex flex-col gap-2">
+                      <button
+                        onClick={copyWalletAddress}
+                        className="rounded-xl border border-white/10 px-4 py-2 text-left transition hover:bg-white/10"
+                      >
+                        Copy Address
+                      </button>
 
-        <button
-          onClick={() =>
-            window.open(
-              `https://testnet.arcscan.app/address/${walletAddress}`,
-              "_blank"
-            )
-          }
-          className="rounded-xl border border-white/10 px-4 py-2 text-left transition hover:bg-white/10"
-        >
-          View on Arcscan
-        </button>
+                      <button
+                        onClick={() =>
+                          window.open(
+                            `https://testnet.arcscan.app/address/${walletAddress}`,
+                            "_blank"
+                          )
+                        }
+                        className="rounded-xl border border-white/10 px-4 py-2 text-left transition hover:bg-white/10"
+                      >
+                        View on Arcscan
+                      </button>
 
-        <button
-          onClick={disconnectWallet}
-          className="rounded-xl border border-red-400/30 px-4 py-2 text-left text-red-400 transition hover:bg-red-400/10"
-        >
-          Disconnect
-        </button>
-      </div>
-    </div>
-  )}
-</div>
+                      <button
+                        onClick={disconnectWallet}
+                        className="rounded-xl border border-red-400/30 px-4 py-2 text-left text-red-400 transition hover:bg-red-400/10"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <button
                 onClick={connectWallet}
-                className="rounded-xl bg-white px-4 py-2 text-black transition hover:opacity-80"
+                className="rounded-xl border border-white/20 px-4 py-2 text-sm text-white transition hover:bg-white/10"
               >
-                Connect Wallet
+                Connect OKX / MetaMask
               </button>
             )}
           </div>
@@ -570,8 +572,6 @@ const averagePlanPrice =
               Load Plans
             </button>
 
-            <TurnkeyButton />
-
             <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
               Total Plans: {planCount}
             </div>
@@ -580,40 +580,28 @@ const averagePlanPrice =
 
         <div className="mt-16 grid gap-6 md:grid-cols-4">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">
-              Total Revenue
-            </p>
-
+            <p className="text-sm text-zinc-400">Total Revenue</p>
             <h3 className="mt-3 text-3xl font-bold">
               {totalRevenue.toFixed(2)} USDC
             </h3>
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">
-              Total Subscribers
-            </p>
-
+            <p className="text-sm text-zinc-400">Total Subscribers</p>
             <h3 className="mt-3 text-3xl font-bold">
               {totalSubscribers}
             </h3>
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">
-              Active Plans
-            </p>
-
+            <p className="text-sm text-zinc-400">Active Plans</p>
             <h3 className="mt-3 text-3xl font-bold">
               {activePlans}
             </h3>
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <p className="text-sm text-zinc-400">
-              Avg Plan Price
-            </p>
-
+            <p className="text-sm text-zinc-400">Avg Plan Price</p>
             <h3 className="mt-3 text-3xl font-bold">
               {averagePlanPrice.toFixed(2)} USDC
             </h3>
@@ -731,32 +719,32 @@ const averagePlanPrice =
                 </p>
               </div>
 
-             <div className="mt-6 flex flex-wrap gap-3">
-  {!subscribedPlans.includes(plan.id) ? (
-    <button
-      onClick={() => subscribeAndPay(plan)}
-      className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
-    >
-      Subscribe + Pay
-    </button>
-  ) : (
-    <>
-      <button
-        onClick={() => pay(plan.id)}
-        className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
-      >
-        Pay Renewal
-      </button>
+              <div className="mt-6 flex flex-wrap gap-3">
+                {!subscribedPlans.includes(plan.id) ? (
+                  <button
+                    onClick={() => subscribeAndPay(plan)}
+                    className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:opacity-80"
+                  >
+                    Subscribe + Pay
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => pay(plan.id)}
+                      className="rounded-xl border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
+                    >
+                      Pay Renewal
+                    </button>
 
-      <button
-        onClick={() => cancelSubscription(plan.id)}
-        className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
-      >
-        Cancel
-      </button>
-    </>
-  )}
-</div>
+                    <button
+                      onClick={() => cancelSubscription(plan.id)}
+                      className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>
