@@ -20,10 +20,12 @@ export function TurnkeyButton() {
       });
 
       await refreshWallets();
+
       alert("Turnkey wallet created successfully");
     } catch (error) {
-      console.error("Create wallet failed:", error);
-      alert("Create Turnkey wallet failed");
+      console.error(error);
+
+      alert("Create wallet failed");
     }
   }
 
@@ -39,34 +41,35 @@ export function TurnkeyButton() {
   }
 
   if (wallets && wallets.length > 0) {
-  const wallet = wallets[0];
-  const address =
-    wallet.accounts?.[0]?.address || "Wallet created";
+    const wallet = wallets[0];
 
-  return (
-    <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 px-4 py-3 text-green-400">
-      <span className="font-medium">
-        Turnkey:{" "}
-        {address.startsWith("0x")
-          ? `${address.slice(0, 6)}...${address.slice(-4)}`
-          : address}
-      </span>
+    const address =
+      wallet.accounts?.[0]?.address || "";
 
-      {address.startsWith("0x") && (
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(address);
-            alert("Turnkey wallet copied");
-          }}
-          className="rounded-lg border border-green-400/30 p-2 transition hover:bg-green-400/10"
-          title="Copy Turnkey wallet"
-        >
-          <Copy size={16} />
-        </button>
-      )}
-    </div>
-  );
-}
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 px-4 py-3 text-green-400">
+        <span className="font-medium">
+          Turnkey:{" "}
+          {address
+            ? `${address.slice(0, 6)}...${address.slice(-4)}`
+            : "Wallet Ready"}
+        </span>
+
+        {address && (
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(address);
+
+              alert("Turnkey address copied");
+            }}
+            className="rounded-lg border border-green-400/30 p-2 transition hover:bg-green-400/10"
+          >
+            <Copy size={16} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <button
