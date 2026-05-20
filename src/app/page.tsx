@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { TurnkeyButton } from "@/components/ui/turnkey-button";
+import { useTurnkeySigner } from "@/lib/use-turnkey-signer";
 
 declare global {
   interface Window {
@@ -80,6 +81,8 @@ function getWalletProvider(): WalletProvider | undefined {
 }
 
 export default function HomePage() {
+  const turnkeySigner = useTurnkeySigner();
+
   const [walletAddress, setWalletAddress] = useState("");
   const [usdcBalance, setUsdcBalance] = useState("0.00");
   const [eurcBalance, setEurcBalance] = useState("0.00");
@@ -605,6 +608,13 @@ export default function HomePage() {
             <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
               My Plans: {merchantPlans.length}
             </div>
+
+            {turnkeySigner.isReady && (
+              <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
+                Turnkey Ready: {turnkeySigner.address.slice(0, 6)}...
+                {turnkeySigner.address.slice(-4)}
+              </div>
+            )}
           </div>
         </div>
 
