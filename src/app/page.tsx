@@ -97,12 +97,14 @@ export default function HomePage() {
   const [planPrice, setPlanPrice] = useState("");
   const [planInterval, setPlanInterval] = useState("1");
 
-  const merchantPlans = walletAddress
-    ? plans.filter(
-        (plan) =>
-          plan.merchant.toLowerCase() === walletAddress.toLowerCase()
-      )
-    : [];
+  const activeAddress =
+  turnkeySigner.isReady ? turnkeySigner.address : walletAddress;
+  const merchantPlans = activeAddress
+  ? plans.filter(
+      (plan) =>
+        plan.merchant.toLowerCase() === activeAddress.toLowerCase()
+    )
+  : [];
 
   const merchantRevenue = merchantPlans.reduce(
     (sum, plan) => sum + Number(plan.revenue),
@@ -229,25 +231,11 @@ export default function HomePage() {
   }
 
   async function getContract(withSigner = false) {
-    const walletProvider = getWalletProvider();
-
-    if (!walletProvider) {
-      throw new Error("Wallet not found");
-    }
-
-    await ensureArcNetwork(walletProvider);
-
-    const provider = new ethers.BrowserProvider(walletProvider);
-
-    if (withSigner) {
-      const signer = await provider.getSigner();
-
-      return new ethers.Contract(
-        CONTRACT_ADDRESS,
-        ARCSUB_ABI,
-        signer
-      );
-    }
+  // PRIORITY: Turnkey wallet
+  if (turnkeySigner.isReady) {
+    const provider = new ethers.JsonRpcProvider(
+      "https://rpc.testnet.arc.network"
+    );
 
     return new ethers.Contract(
       CONTRACT_ADDRESS,
@@ -255,6 +243,34 @@ export default function HomePage() {
       provider
     );
   }
+
+  // FALLBACK: OKX / MetaMask
+  const walletProvider = getWalletProvider();
+
+  if (!walletProvider) {
+    throw new Error("Wallet not found");
+  }
+
+  await ensureArcNetwork(walletProvider);
+
+  const provider = new ethers.BrowserProvider(walletProvider);
+
+  if (withSigner) {
+    const signer = await provider.getSigner();
+
+    return new ethers.Contract(
+      CONTRACT_ADDRESS,
+      ARCSUB_ABI,
+      signer
+    );
+  }
+
+  return new ethers.Contract(
+    CONTRACT_ADDRESS,
+    ARCSUB_ABI,
+    provider
+  );
+}
 
   async function loadBalances(address = walletAddress) {
     const walletProvider = getWalletProvider();
@@ -486,6 +502,49 @@ export default function HomePage() {
     }
   }
 
+  async function testTurnkeyTransaction() {
+  if (!turnkeySigner.isReady) {
+    alert("Turnkey wallet is not ready");
+    return;
+  }
+
+  try {
+    const statusId = await turnkeySigner.ethSendTransaction({
+      walletAccount: turnkeySigner.account,
+      transaction: {
+        from: turnkeySigner.address,
+        to: turnkeySigner.address,
+        value: "0x0",
+        data: "0x",
+        chainId: "0x4CEF52",
+      },
+    } as any);
+
+    console.log("Turnkey send status id:", statusId);
+
+    const result = await turnkeySigner.turnkey.pollTransactionStatus({
+      sendTransactionStatusId: statusId,
+    } as any);
+
+    console.log("Turnkey tx result:", result);
+
+    alert("Turnkey transaction submitted");
+  } catch (err: unknown) {
+    console.error("Turnkey test transaction failed:", err);
+
+    const error = err as {
+      message?: string;
+      shortMessage?: string;
+      cause?: unknown;
+    };
+
+    alert(
+      error.shortMessage ||
+        error.message ||
+        "Turnkey test transaction failed"
+    );
+  }
+}
   function openFaucet() {
     window.open(FAUCET_URL, "_blank", "noopener,noreferrer");
   }
@@ -579,44 +638,52 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-7xl px-6 py-20">
         <div className="max-w-3xl">
-          <p className="mb-4 text-sm uppercase tracking-[0.3em] text-zinc-400">
-            Merchant Subscription Dashboard
-          </p>
+  <p className="mb-4 text-sm uppercase tracking-[0.3em] text-zinc-400">
+    Merchant Subscription Dashboard
+  </p>
 
-          <h2 className="text-6xl font-bold leading-tight">
-            Manage Stablecoin Subscriptions
-            on Arc
-          </h2>
+  <h2 className="text-6xl font-bold leading-tight">
+    Manage Stablecoin Subscriptions on Arc
+  </h2>
 
-          <p className="mt-6 text-xl text-zinc-400">
-            Create plans, track subscribers, monitor merchant revenue,
-            and manage recurring USDC payments from one dashboard.
-          </p>
+  <p className="mt-6 text-xl text-zinc-400">
+    Create plans, track subscribers, monitor merchant revenue,
+    and manage recurring USDC payments from one dashboard.
+  </p>
 
-          <div className="mt-10 flex flex-wrap gap-4">
-            <button
-              onClick={() => loadPlans(walletAddress)}
-              className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
-            >
-              Load Plans
-            </button>
+  <div className="mt-10 flex flex-wrap gap-4">
+    <button
+      onClick={() => loadPlans(activeAddress)}
+      className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
+    >
+      Load Plans
+    </button>
 
-            <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
-              Total Plans: {planCount}
-            </div>
+    <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
+      Total Plans: {planCount}
+    </div>
 
-            <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
-              My Plans: {merchantPlans.length}
-            </div>
+    <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
+      My Plans: {merchantPlans.length}
+    </div>
 
-            {turnkeySigner.isReady && (
-              <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
-                Turnkey Ready: {turnkeySigner.address.slice(0, 6)}...
-                {turnkeySigner.address.slice(-4)}
-              </div>
-            )}
-          </div>
-        </div>
+    {turnkeySigner.isReady && (
+      <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
+        Active Wallet: {turnkeySigner.address.slice(0, 6)}...
+        {turnkeySigner.address.slice(-4)}
+      </div>
+    )}
+
+    {turnkeySigner.isReady && (
+  <button
+    onClick={testTurnkeyTransaction}
+    className="rounded-2xl border border-purple-400/30 px-6 py-3 text-purple-400 transition hover:bg-purple-400/10"
+  >
+    Test Turnkey Sign
+  </button>
+)}
+  </div>
+</div>
 
         <div className="mt-16">
           <h3 className="mb-6 text-2xl font-semibold">

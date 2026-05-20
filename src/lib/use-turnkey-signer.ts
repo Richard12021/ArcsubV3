@@ -14,5 +14,9 @@ export function useTurnkeySigner() {
     account,
     address: account?.address || "",
     isReady: Boolean(account?.address),
+
+    handleSendTransaction: turnkey.handleSendTransaction,
+    signAndSendTransaction: turnkey.signAndSendTransaction,
+    ethSendTransaction: turnkey.ethSendTransaction,
   };
 }
