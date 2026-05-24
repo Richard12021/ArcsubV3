@@ -4,24 +4,7 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { TurnkeyButton } from "@/components/ui/turnkey-button";
 import { useTurnkeySigner } from "@/lib/use-turnkey-signer";
-
-declare global {
-  interface Window {
-    ethereum?: {
-      request: (args: {
-        method: string;
-        params?: unknown[];
-      }) => Promise<unknown>;
-    };
-
-    okxwallet?: {
-      request: (args: {
-        method: string;
-        params?: unknown[];
-      }) => Promise<unknown>;
-    };
-  }
-}
+import { createTurnkeyArcWalletClient } from "@/lib/turnkey-arc-client";
 
 const CONTRACT_ADDRESS =
   "0x65F8ca69218f95A6cc16F6c079e58892058e1214";
@@ -77,7 +60,16 @@ const intervalLabels: Record<string, string> = {
 };
 
 function getWalletProvider(): WalletProvider | undefined {
-  return window.okxwallet || window.ethereum;
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const browserWindow = window as unknown as {
+    ethereum?: WalletProvider;
+    okxwallet?: WalletProvider;
+  };
+
+  return browserWindow.okxwallet || browserWindow.ethereum;
 }
 
 export default function HomePage() {
@@ -98,13 +90,13 @@ export default function HomePage() {
   const [planInterval, setPlanInterval] = useState("1");
 
   const activeAddress =
-  turnkeySigner.isReady ? turnkeySigner.address : walletAddress;
+    turnkeySigner.isReady ? turnkeySigner.address : walletAddress;
   const merchantPlans = activeAddress
-  ? plans.filter(
+    ? plans.filter(
       (plan) =>
         plan.merchant.toLowerCase() === activeAddress.toLowerCase()
     )
-  : [];
+    : [];
 
   const merchantRevenue = merchantPlans.reduce(
     (sum, plan) => sum + Number(plan.revenue),
@@ -123,9 +115,9 @@ export default function HomePage() {
   const merchantAveragePlanPrice =
     merchantPlans.length > 0
       ? merchantPlans.reduce(
-          (sum, plan) => sum + Number(plan.price),
-          0
-        ) / merchantPlans.length
+        (sum, plan) => sum + Number(plan.price),
+        0
+      ) / merchantPlans.length
       : 0;
 
   useEffect(() => {
@@ -231,11 +223,39 @@ export default function HomePage() {
   }
 
   async function getContract(withSigner = false) {
-  // PRIORITY: Turnkey wallet
-  if (turnkeySigner.isReady) {
-    const provider = new ethers.JsonRpcProvider(
-      "https://rpc.testnet.arc.network"
-    );
+    // PRIORITY: Turnkey wallet
+    if (turnkeySigner.isReady) {
+      const provider = new ethers.JsonRpcProvider(
+        "https://rpc.testnet.arc.network"
+      );
+
+      return new ethers.Contract(
+        CONTRACT_ADDRESS,
+        ARCSUB_ABI,
+        provider
+      );
+    }
+
+    // FALLBACK: OKX / MetaMask
+    const walletProvider = getWalletProvider();
+
+    if (!walletProvider) {
+      throw new Error("Wallet not found");
+    }
+
+    await ensureArcNetwork(walletProvider);
+
+    const provider = new ethers.BrowserProvider(walletProvider);
+
+    if (withSigner) {
+      const signer = await provider.getSigner();
+
+      return new ethers.Contract(
+        CONTRACT_ADDRESS,
+        ARCSUB_ABI,
+        signer
+      );
+    }
 
     return new ethers.Contract(
       CONTRACT_ADDRESS,
@@ -243,34 +263,6 @@ export default function HomePage() {
       provider
     );
   }
-
-  // FALLBACK: OKX / MetaMask
-  const walletProvider = getWalletProvider();
-
-  if (!walletProvider) {
-    throw new Error("Wallet not found");
-  }
-
-  await ensureArcNetwork(walletProvider);
-
-  const provider = new ethers.BrowserProvider(walletProvider);
-
-  if (withSigner) {
-    const signer = await provider.getSigner();
-
-    return new ethers.Contract(
-      CONTRACT_ADDRESS,
-      ARCSUB_ABI,
-      signer
-    );
-  }
-
-  return new ethers.Contract(
-    CONTRACT_ADDRESS,
-    ARCSUB_ABI,
-    provider
-  );
-}
 
   async function loadBalances(address = walletAddress) {
     const walletProvider = getWalletProvider();
@@ -503,48 +495,105 @@ export default function HomePage() {
   }
 
   async function testTurnkeyTransaction() {
-  if (!turnkeySigner.isReady) {
-    alert("Turnkey wallet is not ready");
-    return;
+    if (!turnkeySigner.isReady) {
+      alert("Turnkey wallet is not ready");
+      return;
+    }
+
+    try {
+      alert("Turnkey wallet is ready for signing test");
+    } catch (err: unknown) {
+      console.error("Turnkey test failed:", err);
+      alert("Turnkey test failed");
+    }
   }
+  async function testRelayRoute() {
+    try {
+      const response = await fetch("/api/turnkey/relay", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          wallet: turnkeySigner.address,
+          action: "test",
+        }),
+      });
 
-  try {
-    const statusId = await turnkeySigner.ethSendTransaction({
-      walletAccount: turnkeySigner.account,
-      transaction: {
-        from: turnkeySigner.address,
-        to: turnkeySigner.address,
-        value: "0x0",
-        data: "0x",
-        chainId: "0x4CEF52",
-      },
-    } as any);
+      const text = await response.text();
 
-    console.log("Turnkey send status id:", statusId);
+      console.log("Relay raw response:", text);
 
-    const result = await turnkeySigner.turnkey.pollTransactionStatus({
-      sendTransactionStatusId: statusId,
-    } as any);
+      alert(text);
+    } catch (err: unknown) {
+      console.error("Relay route failed:", err);
 
-    console.log("Turnkey tx result:", result);
+      const error = err as { message?: string };
 
-    alert("Turnkey transaction submitted");
-  } catch (err: unknown) {
-    console.error("Turnkey test transaction failed:", err);
+      alert(error.message || "Relay route failed");
+    }
+  }
+  async function testEncodeCreatePlan() {
+    try {
+      const response = await fetch("/api/turnkey/relay", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "createPlan",
+          walletAccountId: turnkeySigner.walletAccountId,
+          from: turnkeySigner.address,
+          name: "Turnkey Test Plan",
+          description: "Created through relay encoder",
+          price: "1",
+          interval: "1",
+        }),
+      });
 
-    const error = err as {
-      message?: string;
-      shortMessage?: string;
-      cause?: unknown;
-    };
+      const relayData = await response.json();
 
-    alert(
-      error.shortMessage ||
+      console.log("Create plan encoded:", relayData);
+
+      alert(relayData.message || "Relay response received");
+    } catch (err) {
+      console.error(err);
+      alert("Create plan encode failed");
+    }
+  }
+  async function testTurnkeyViemClient() {
+    if (!turnkeySigner.isReady) {
+      alert("Turnkey wallet is not ready");
+      return;
+    }
+
+    if (!turnkeySigner.httpClient) {
+      alert("Turnkey httpClient is not ready");
+      return;
+    }
+
+    try {
+      const walletClient = await createTurnkeyArcWalletClient({
+        httpClient: turnkeySigner.httpClient,
+        organizationId: turnkeySigner.organizationId,
+        signWith: turnkeySigner.address,
+      });
+
+      console.log("Turnkey viem wallet client:", walletClient);
+
+      alert("Turnkey viem client created successfully");
+    } catch (err: unknown) {
+      console.error("Create Turnkey viem client failed:", err);
+
+      const error = err as { message?: string; shortMessage?: string };
+
+      alert(
+        error.shortMessage ||
         error.message ||
-        "Turnkey test transaction failed"
-    );
+        "Create Turnkey viem client failed"
+      );
+    }
   }
-}
   function openFaucet() {
     window.open(FAUCET_URL, "_blank", "noopener,noreferrer");
   }
@@ -638,52 +687,63 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-7xl px-6 py-20">
         <div className="max-w-3xl">
-  <p className="mb-4 text-sm uppercase tracking-[0.3em] text-zinc-400">
-    Merchant Subscription Dashboard
-  </p>
+          <p className="mb-4 text-sm uppercase tracking-[0.3em] text-zinc-400">
+            Merchant Subscription Dashboard
+          </p>
 
-  <h2 className="text-6xl font-bold leading-tight">
-    Manage Stablecoin Subscriptions on Arc
-  </h2>
+          <h2 className="text-6xl font-bold leading-tight">
+            Manage Stablecoin Subscriptions on Arc
+          </h2>
 
-  <p className="mt-6 text-xl text-zinc-400">
-    Create plans, track subscribers, monitor merchant revenue,
-    and manage recurring USDC payments from one dashboard.
-  </p>
+          <p className="mt-6 text-xl text-zinc-400">
+            Create plans, track subscribers, monitor merchant revenue,
+            and manage recurring USDC payments from one dashboard.
+          </p>
 
-  <div className="mt-10 flex flex-wrap gap-4">
-    <button
-      onClick={() => loadPlans(activeAddress)}
-      className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
-    >
-      Load Plans
-    </button>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <button
+              onClick={() => loadPlans(activeAddress)}
+              className="rounded-2xl bg-white px-6 py-3 font-medium text-black transition hover:opacity-80"
+            >
+              Load Plans
+            </button>
 
-    <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
-      Total Plans: {planCount}
-    </div>
+            <div className="flex items-center rounded-2xl border border-white/20 px-6 py-3">
+              Total Plans: {planCount}
+            </div>
 
-    <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
-      My Plans: {merchantPlans.length}
-    </div>
+            <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
+              My Plans: {merchantPlans.length}
+            </div>
 
-    {turnkeySigner.isReady && (
-      <div className="flex items-center rounded-2xl border border-green-400/20 px-6 py-3 text-green-400">
-        Active Wallet: {turnkeySigner.address.slice(0, 6)}...
-        {turnkeySigner.address.slice(-4)}
-      </div>
-    )}
+            {turnkeySigner.isReady && (
+              <button
+                onClick={testTurnkeyTransaction}
+                className="rounded-2xl border border-purple-400/30 px-6 py-3 text-purple-400 transition hover:bg-purple-400/10"
+              >
+                Test Turnkey Sign
+              </button>
+            )}
+            {turnkeySigner.isReady && (
+              <button
+                onClick={testEncodeCreatePlan}
+                className="rounded-2xl border border-orange-400/30 px-6 py-3 text-orange-400 transition hover:bg-orange-400/10"
+              >
+                Test Encode Create Plan
+              </button>
+            )}
 
-    {turnkeySigner.isReady && (
-  <button
-    onClick={testTurnkeyTransaction}
-    className="rounded-2xl border border-purple-400/30 px-6 py-3 text-purple-400 transition hover:bg-purple-400/10"
-  >
-    Test Turnkey Sign
-  </button>
-)}
-  </div>
-</div>
+            {turnkeySigner.isReady && (
+              <button
+                onClick={testRelayRoute}
+                className="rounded-2xl border border-cyan-400/30 px-6 py-3 text-cyan-400 transition hover:bg-cyan-400/10"
+              >
+                Test Relay API
+              </button>
+            )}
+
+          </div>
+        </div>
 
         <div className="mt-16">
           <h3 className="mb-6 text-2xl font-semibold">
@@ -796,11 +856,10 @@ export default function HomePage() {
                   </span>
 
                   <span
-                    className={`rounded-full px-3 py-1 text-xs ${
-                      plan.active
-                        ? "bg-green-500/10 text-green-400"
-                        : "bg-red-500/10 text-red-400"
-                    }`}
+                    className={`rounded-full px-3 py-1 text-xs ${plan.active
+                      ? "bg-green-500/10 text-green-400"
+                      : "bg-red-500/10 text-red-400"
+                      }`}
                   >
                     {plan.active ? "Active" : "Inactive"}
                   </span>
@@ -847,7 +906,7 @@ export default function HomePage() {
 
                 <div className="mt-6 flex flex-wrap gap-3">
                   {walletAddress.toLowerCase() ===
-                  plan.merchant.toLowerCase() ? (
+                    plan.merchant.toLowerCase() ? (
                     <span className="rounded-xl border border-yellow-400/30 px-4 py-2 text-sm text-yellow-400">
                       Your Plan
                     </span>

@@ -12,11 +12,13 @@ export function useTurnkeySigner() {
     turnkey,
     wallet,
     account,
-    address: account?.address || "",
-    isReady: Boolean(account?.address),
 
-    handleSendTransaction: turnkey.handleSendTransaction,
-    signAndSendTransaction: turnkey.signAndSendTransaction,
-    ethSendTransaction: turnkey.ethSendTransaction,
+    address: account?.address || "",
+    walletAccountId: account?.walletAccountId || "",
+    organizationId: account?.organizationId || "",
+
+    httpClient: turnkey.httpClient,
+
+    isReady: Boolean(account?.address),
   };
 }
